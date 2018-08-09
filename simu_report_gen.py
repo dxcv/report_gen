@@ -47,7 +47,6 @@ def generate_return_report(tradeDate,tradeListPath=None,holdListPath=None):
     tradeListPath = r'C:\Users\Administrator\Desktop\simu_report\buyLists' if tradeListPath is None else tradeListPath
     w.start()
     infoDate = w.tdaysoffset(-1,tradeDate).Data[0][0].strftime('%Y%m%d')
-    # infoDate = '20180808'
     retList = pd.read_csv(os.path.join(holdListPath,'returns_tradeDate_{}.csv'.format(infoDate)),encoding='gbk')
     trdList = pd.read_csv(os.path.join(tradeListPath,'stkNum50_tradeList_infoDate_{}.csv'.format(infoDate)),encoding='gbk')
     holdStkList = retList.loc[retList['buyDate']==int(infoDate),['stkcd','predictVal']].set_index(['stkcd'])
@@ -114,23 +113,22 @@ def update_recorder(endDate=None,recordFile=None,holdListPath=None):
     print('recorder updated')
 
 
-def generate_doc(tdate=None, docPath=None,tradeListPath=None,recorderPath=None):
-    tdate = dt.datetime.today().strftime('%Y%m%d') if tdate is None else tdate
-    tdate = '20180809'
+def generate_doc(tradeDate=None, docPath=None,tradeListPath=None,recorderPath=None):
+    tradeDate = dt.datetime.today().strftime('%Y%m%d') if tradeDate is None else tradeDate
     docPath = r'.\reportDocs' if docPath is None else docPath
     recorderPath = r'.\\' if recorderPath is None else recorderPath
     tradeListPath = r'.\buyLists' if tradeListPath is None else tradeListPath
     # 创建空白文档
     document = Document()
-    document.add_heading(r'策略模拟收益日报 {}'.format(tdate),0)
+    document.add_heading(r'策略模拟收益日报 {}'.format(tradeDate),0)
     document.add_paragraph()
     # 加入选出的股票
     # w.start()
-    nextDate = 20180810  # w.tdaysoffset(1,tdate).Data[0][0].strftime('%Y%m%d')
+    nextDate = 20180810  # w.tdaysoffset(1,tradeDate).Data[0][0].strftime('%Y%m%d')
     para = document.add_paragraph('')
     run = para.add_run(r'1. 选出股票列表：用于{}日开盘买入'.format(nextDate))
     run.font.bold = True
-    selectStocks = pd.read_csv(os.path.join(tradeListPath,'stkNum50_tradeList_infoDate_{}.csv'.format(tdate)),encoding='gbk')
+    selectStocks = pd.read_csv(os.path.join(tradeListPath,'stkNum50_tradeList_infoDate_{}.csv'.format(tradeDate)),encoding='gbk')
     selectStocks.sort_values(by=['stkcd'],inplace=True)
     selectStocks.index = range(selectStocks.shape[0])
     rows, cols = (25, 4)
@@ -144,10 +142,10 @@ def generate_doc(tdate=None, docPath=None,tradeListPath=None,recorderPath=None):
     # 计算 日度、周度、月度、年度 年化收益率，最大回撤，夏普比率
     document.add_paragraph()
     para = document.add_paragraph('')
-    run = para.add_run(r'2. 模拟策略收益净值曲线: 费用设为双边千三')
+    run = para.add_run(r'2. 模拟策略收益指标统计: 费用设为双边千三')
     run.font.bold = True
     recorders = pd.read_csv(os.path.join(recorderPath, r'backtest_recorder.csv'))
-    tdateWeekday = dt.datetime.strptime(tdate,'%Y%m%d').weekday()
+    tdateWeekday = dt.datetime.strptime(tradeDate,'%Y%m%d').weekday()
     tradeDTs = recorders['tradeDate'].map(lambda x : dt.datetime.strptime(str(x),'%Y%m%d'))
     weekDays = tradeDTs.map(lambda x : x.weekday()).values
     idx = weekDays>=tdateWeekday
@@ -216,23 +214,19 @@ def generate_doc(tdate=None, docPath=None,tradeListPath=None,recorderPath=None):
     plt.legend(loc = 'upper left',fontsize=30)
     plt.title('最近一年净值曲线',fontsize=30)
     # plt.show()
-    figPath = os.path.join(r'.\netvalFigures','netval_figure_{}.png'.format(tdate))
+    figPath = os.path.join(r'.\netvalFigures','netval_figure_{}.png'.format(tradeDate))
     plt.savefig(figPath)
 
     pic = document.add_picture(figPath, width=Inches(6))
 
-    document.save(os.path.join(docPath,'策略模拟收益日报_{}.docx'.format(tdate)))
+    document.save(os.path.join(docPath,'策略模拟收益日报_{}.docx'.format(tradeDate)))
+    print('daily report generated')
 
 
 
 
 if __name__=='__main__':
-    # get_all_from_list()
-
-    # w.start()
-    # all = w.wsd('000001.SH,000300.SH,000905.SH,000016.SH','pct_chg','20180601','20180808').Data
-    # print(all)
-
-    # update_recorder()
-    # generate_return_report(20180809)
-    generate_doc()
+    tradeDate = dt.datetime.today().strftime('%Y%m%d')
+    generate_return_report(tradeDate=tradeDate)
+    update_recorder(endDate=tradeDate)
+    generate_doc(tradeDate=tradeDate)
