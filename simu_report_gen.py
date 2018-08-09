@@ -1,10 +1,16 @@
 #coding=utf8
 import os
+import sys
 import datetime as dt
 import numpy as np
 import pandas as pd
 
-
+sys.path.append(r'D:\Anaconda3\Lib\site-packages')
+from docx import Document
+from docx.shared import Inches
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 from WindPy import w
 import cx_Oracle
@@ -77,6 +83,9 @@ def update_recorder(endDate=None,recordFile=None,holdListPath=None):
     lastUpdt = recordDF['tradeDate'].values[-1]
     w.start()
     startDate = w.tdaysoffset(1, str(lastUpdt)).Data[0][0].strftime('%Y%m%d')
+    if startDate>endDate:
+        print('no new data to update')
+        return
     betweenDays = w.tdays(startDate,endDate).Data[0]
     betweenDays = [int(tdt.strftime('%Y%m%d')) for tdt in betweenDays]
     print(betweenDays)
@@ -105,6 +114,116 @@ def update_recorder(endDate=None,recordFile=None,holdListPath=None):
     print('recorder updated')
 
 
+def generate_doc(tdate=None, docPath=None,tradeListPath=None,recorderPath=None):
+    tdate = dt.datetime.today().strftime('%Y%m%d') if tdate is None else tdate
+    tdate = '20180809'
+    docPath = r'.\reportDocs' if docPath is None else docPath
+    recorderPath = r'.\\' if recorderPath is None else recorderPath
+    tradeListPath = r'.\buyLists' if tradeListPath is None else tradeListPath
+    # 创建空白文档
+    document = Document()
+    document.add_heading(r'策略模拟收益日报 {}'.format(tdate),0)
+    document.add_paragraph()
+    # 加入选出的股票
+    # w.start()
+    nextDate = 20180810  # w.tdaysoffset(1,tdate).Data[0][0].strftime('%Y%m%d')
+    para = document.add_paragraph('')
+    run = para.add_run(r'1. 选出股票列表：用于{}日开盘买入'.format(nextDate))
+    run.font.bold = True
+    selectStocks = pd.read_csv(os.path.join(tradeListPath,'stkNum50_tradeList_infoDate_{}.csv'.format(tdate)),encoding='gbk')
+    selectStocks.sort_values(by=['stkcd'],inplace=True)
+    selectStocks.index = range(selectStocks.shape[0])
+    rows, cols = (25, 4)
+    table = document.add_table(rows=rows, cols=cols, style='Table Grid')
+    for rw in range(rows):
+        table.cell(rw, 0).text = str(selectStocks['stkcd'][rw])
+        table.cell(rw, 1).text = str(selectStocks['stkname'][rw])
+        table.cell(rw, 2).text = str(selectStocks['stkcd'][rw + rows])
+        table.cell(rw, 3).text = str(selectStocks['stkname'][rw + rows])
+
+    # 计算 日度、周度、月度、年度 年化收益率，最大回撤，夏普比率
+    document.add_paragraph()
+    para = document.add_paragraph('')
+    run = para.add_run(r'2. 模拟策略收益净值曲线: 费用设为双边千三')
+    run.font.bold = True
+    recorders = pd.read_csv(os.path.join(recorderPath, r'backtest_recorder.csv'))
+    tdateWeekday = dt.datetime.strptime(tdate,'%Y%m%d').weekday()
+    tradeDTs = recorders['tradeDate'].map(lambda x : dt.datetime.strptime(str(x),'%Y%m%d'))
+    weekDays = tradeDTs.map(lambda x : x.weekday()).values
+    idx = weekDays>=tdateWeekday
+    idx[-1] = False
+    lastWeekDate = recorders.loc[idx,'tradeDate'].values[-1]
+    months = tradeDTs.map(lambda x : x.month)
+    lastMonthDate = recorders.loc[months!=months.values[-1],'tradeDate'].values[-1]
+    years = tradeDTs.map(lambda x : x.year)
+    lastYearDate = recorders.loc[years != years.values[-1], 'tradeDate'].values[-1]
+    cutDates = [lastWeekDate, lastMonthDate, lastYearDate]
+    fees = 3/1000
+    annCnt = 245
+    digit = 2
+    recorders['feeRet'] = recorders['netReturn'] - fees/2
+    indicators = {
+        'freq': ['当日','当周','当月','当年'],
+        'cumRet': [recorders['feeRet'].values[-1]],
+        'annRet': [''],
+        'annVol': [''],
+        'maxDD': [''],
+        'sharpe': [''],
+    }
+    for tdt in cutDates:
+        rets = recorders.loc[recorders['tradeDate']>tdt,'feeRet']
+        indicators['cumRet'].append(rets.sum())
+        indicators['annRet'].append(rets.mean() * annCnt)
+        indicators['annVol'].append(rets.std() * np.sqrt(annCnt))
+        indicators['sharpe'].append(indicators['annRet'][-1]/indicators['annVol'][-1])
+        netVal = (1 + rets).cumprod()
+        netMax = np.max([netVal.cummax().values,np.ones_like(netVal.values)],axis=0)    # 第一天算作本周、本月，其最大回测应该和1比
+        indicators['maxDD'].append(np.min(netVal.values/netMax-1))
+    table = document.add_table(rows=5, cols=6, style='Table Grid')
+    table.cell(0, 0).text = ''
+    table.cell(0, 1).text = '累计收益率'
+    table.cell(0, 2).text = '年化收益率'
+    table.cell(0, 3).text = '年化波动率'
+    table.cell(0, 4).text = '最大回撤'
+    table.cell(0, 5).text = '夏普比率'
+    for rw in range(1, 5):
+        table.cell(rw, 0).text = indicators['freq'][rw-1]
+        table.cell(rw, 1).text = '{}%'.format(str(np.round(indicators['cumRet'][rw-1]*100, digit))) if indicators['cumRet'][rw-1] else indicators['cumRet'][rw-1]
+        table.cell(rw, 2).text = '{}%'.format(str(np.round(indicators['annRet'][rw-1]*100, digit))) if indicators['annRet'][rw-1] else indicators['annRet'][rw-1]
+        table.cell(rw, 3).text = '{}%'.format(str(np.round(indicators['annVol'][rw-1]*100, digit))) if indicators['annVol'][rw-1] else indicators['annVol'][rw-1]
+        table.cell(rw, 4).text = '{}%'.format(str(np.round(indicators['maxDD'][rw-1]*100, digit))) if indicators['maxDD'][rw-1] else indicators['maxDD'][rw-1]
+        table.cell(rw, 5).text = str(np.round(indicators['sharpe'][rw - 1],digit*2)) if indicators['sharpe'][rw-1] else indicators['sharpe'][rw-1]
+    document.add_paragraph(r'注：年化收益计算默认每年245个交易日')
+
+    # 画出 最近一年净值曲线
+    document.add_paragraph()
+    para = document.add_paragraph('')
+    run = para.add_run(r'3. 最近一年模拟策略收益净值曲线:')
+    run.font.bold = True
+    rets = recorders.loc[recorders['tradeDate'] >= lastYearDate, ['tradeDate','feeRet','000001.SH','000300.SH','000905.SH']]
+    firstIdx = rets.index.values[0]
+    rets.loc[firstIdx, ['feeRet','000001.SH','000300.SH','000905.SH']] = 0
+    netVals = (1 + rets.loc[:,['feeRet','000001.SH','000300.SH','000905.SH']]).cumprod()
+    netVals.columns = ['模拟净值','上证指数','沪深300','中证500']
+    mpl.rcParams['font.sans-serif'] = ['SimHei']
+    fig = plt.figure(figsize=(20, 13))
+    for col in netVals.columns:
+        plt.plot(netVals[col],label=col,lw=2)
+    xtickSteps = range(0,netVals.shape[0],5)
+    plt.xticks(rotation=70,fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.xticks(netVal.index.values[xtickSteps],rets['tradeDate'].values[xtickSteps])
+    plt.legend(loc = 'upper left',fontsize=30)
+    plt.title('最近一年净值曲线',fontsize=30)
+    # plt.show()
+    figPath = os.path.join(r'.\netvalFigures','netval_figure_{}.png'.format(tdate))
+    plt.savefig(figPath)
+
+    pic = document.add_picture(figPath, width=Inches(6))
+
+    document.save(os.path.join(docPath,'策略模拟收益日报_{}.docx'.format(tdate)))
+
+
 
 
 if __name__=='__main__':
@@ -114,5 +233,6 @@ if __name__=='__main__':
     # all = w.wsd('000001.SH,000300.SH,000905.SH,000016.SH','pct_chg','20180601','20180808').Data
     # print(all)
 
-    update_recorder()
+    # update_recorder()
     # generate_return_report(20180809)
+    generate_doc()
