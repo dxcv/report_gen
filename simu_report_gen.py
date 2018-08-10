@@ -110,11 +110,11 @@ def update_recorder(endDate=None,recordFile=None,holdListPath=None):
     idxRets = idxRets.loc[:]/100
     outPut = pd.concat([outPut, idxRets],axis=1)
     outPut.to_csv(recordFile,mode='a+',index=False,header=False)
-    print('recorder updated')
+    print('recorder updated till {}'.format(endDate))
 
 
 def generate_doc(tradeDate=None, docPath=None,tradeListPath=None,recorderPath=None):
-    tradeDate = dt.datetime.today().strftime('%Y%m%d') if tradeDate is None else tradeDate
+    tradeDate = dt.datetime.today().strftime('%Y%m%d') if tradeDate is None else str(tradeDate)
     docPath = r'.\reportDocs' if docPath is None else docPath
     recorderPath = r'.\\' if recorderPath is None else recorderPath
     tradeListPath = r'.\buyLists' if tradeListPath is None else tradeListPath
@@ -201,8 +201,9 @@ def generate_doc(tradeDate=None, docPath=None,tradeListPath=None,recorderPath=No
     rets = recorders.loc[recorders['tradeDate'] >= lastYearDate, ['tradeDate','feeRet','000001.SH','000300.SH','000905.SH']]
     firstIdx = rets.index.values[0]
     rets.loc[firstIdx, ['feeRet','000001.SH','000300.SH','000905.SH']] = 0
-    netVals = (1 + rets.loc[:,['feeRet','000001.SH','000300.SH','000905.SH']]).cumprod()
-    netVals.columns = ['模拟净值','上证指数','沪深300','中证500']
+    rets['hedgeHS300'] = rets['feeRet'] - rets['000300.SH']
+    netVals = (1 + rets.loc[:,['feeRet','000001.SH','000300.SH','000905.SH','hedgeHS300']]).cumprod()
+    netVals.columns = ['模拟净值','上证指数','沪深300','中证500','对冲沪深300']
     mpl.rcParams['font.sans-serif'] = ['SimHei']
     fig = plt.figure(figsize=(20, 13))
     for col in netVals.columns:
@@ -212,7 +213,7 @@ def generate_doc(tradeDate=None, docPath=None,tradeListPath=None,recorderPath=No
     plt.yticks(fontsize=20)
     plt.xticks(netVal.index.values[xtickSteps],rets['tradeDate'].values[xtickSteps])
     plt.legend(loc = 'upper left',fontsize=30)
-    plt.title('最近一年净值曲线',fontsize=30)
+    plt.title('最近一年净值曲线 {}'.format(tradeDate),fontsize=30)
     # plt.show()
     figPath = os.path.join(r'.\netvalFigures','netval_figure_{}.png'.format(tradeDate))
     plt.savefig(figPath)
@@ -220,7 +221,7 @@ def generate_doc(tradeDate=None, docPath=None,tradeListPath=None,recorderPath=No
     pic = document.add_picture(figPath, width=Inches(6))
 
     document.save(os.path.join(docPath,'策略模拟收益日报_{}.docx'.format(tradeDate)))
-    print('daily report generated')
+    print('daily report generated for date {}'.format(tradeDate))
 
 
 
@@ -230,3 +231,4 @@ if __name__=='__main__':
     generate_return_report(tradeDate=tradeDate)
     update_recorder(endDate=tradeDate)
     generate_doc(tradeDate=tradeDate)
+    # generate_doc(tradeDate=20180809)
