@@ -44,14 +44,13 @@ def get_all_from_list(filePath=None):
 def generate_return_report(tradeDate,tradeListPath=None,holdListPath=None):
     tradeDate = str(tradeDate)
     holdListPath = r'.\holdLists' if holdListPath is None else holdListPath
-    tradeListPath = r'C:\Users\Administrator\Desktop\simu_report\buyLists' if tradeListPath is None else tradeListPath
+    tradeListPath = r'.\buyLists' if tradeListPath is None else tradeListPath
     w.start()
     infoDate = w.tdaysoffset(-1,tradeDate).Data[0][0].strftime('%Y%m%d')
     retList = pd.read_csv(os.path.join(holdListPath,'returns_tradeDate_{}.csv'.format(infoDate)),encoding='gbk')
     trdList = pd.read_csv(os.path.join(tradeListPath,'stkNum50_tradeList_infoDate_{}.csv'.format(infoDate)),encoding='gbk')
     holdStkList = retList.loc[retList['buyDate']==int(infoDate),['stkcd','predictVal']].set_index(['stkcd'])
     buyStkList = trdList.loc[:,['stkcd','predictVal']].set_index(['stkcd'])
-
     conn = cx_Oracle.connect(r'c##sensegain/sensegain@220.194.41.75/wind')
     cursor = conn.cursor()
     sqlLines = 'SELECT TRADE_DT, S_INFO_WINDCODE, S_DQ_OPEN, S_DQ_CLOSE, S_DQ_PRECLOSE, S_DQ_PCTCHANGE/100, S_DQ_CLOSE/S_DQ_OPEN-1, S_DQ_TRADESTATUS ' \
@@ -69,7 +68,7 @@ def generate_return_report(tradeDate,tradeListPath=None,holdListPath=None):
     buyStkList.columns = ['predictVal','date','close','ret','flag']
     buyStkList['buyDate'] = tradeDate
     output = pd.concat([holdStkList,buyStkList],axis=0)
-    output = output.loc[:,['date','close','ret','flag','buyDate','flag']]
+    output = output.loc[:,['date','close','ret','flag','buyDate']]
     output.to_csv(os.path.join(holdListPath,'returns_tradeDate_{}.csv'.format(tradeDate)))
     print('return report generated for trade date {}'.format(tradeDate))
 
